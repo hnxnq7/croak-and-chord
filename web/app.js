@@ -226,5 +226,59 @@ function stopPlay() { state.timers.forEach(clearTimeout); state.timers=[]; state
 function bufferToWav(buffer) { const channels=buffer.numberOfChannels, length=buffer.length*channels*2+44, view=new DataView(new ArrayBuffer(length)); const write=(o,s)=>[...s].forEach((c,i)=>view.setUint8(o+i,c.charCodeAt(0))); write(0,'RIFF');view.setUint32(4,36+buffer.length*channels*2,true);write(8,'WAVEfmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,channels,true);view.setUint32(24,buffer.sampleRate,true);view.setUint32(28,buffer.sampleRate*channels*2,true);view.setUint16(32,channels*2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,buffer.length*channels*2,true);let offset=44;for(let i=0;i<buffer.length;i++)for(let c=0;c<channels;c++){const s=Math.max(-1,Math.min(1,buffer.getChannelData(c)[i]));view.setInt16(offset,s<0?s*0x8000:s*0x7fff,true);offset+=2;}return new Blob([view],{type:'audio/wav'}); }
 async function downloadWav() { const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext; if(!Offline) return; const secs=songSeconds(); const offline=new OfflineAudioContext(2, Math.ceil(44100*secs), 44100); const master=makeMaster(offline); scheduleArrangement(offline,master,secs); const blob=bufferToWav(await offline.startRendering()); const link=Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:`${state.songName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-croak-and-chord.wav`}); link.click(); URL.revokeObjectURL(link.href); }
 function readVlq(data, pos) { let value=0, byte; do { byte=data[pos.i++]; value=(value<<7)|(byte&127); } while(byte&128); return value; }
-function importMidi(event) { const file=event.target.files[0]; if(!file)return; const reader=new FileReader(); reader.onload=() => { try { const data=new Uint8Array(reader.result); const view=new DataView(data.buffer); if(String.fromCharCode(...data.slice(0,4))!=='MThd')throw Error('not MIDI'); const division=view.getUint16(12); let pos={i:14}, ticks=0, active=new Map(), notes=[]; while(pos.i<data.length){ if(String.fromCharCode(...data.slice(pos.i,pos.i+4))==='MTrk'){pos.i+=8;let running=0;while(pos.i<data.length&&String.fromCharCode(...data.slice(pos.i,pos.i+4))!=='MTrk'){ticks+=readVlq(data,pos);let status=data[pos.i];if(status&128){pos.i++;running=status}else status=running;if(status===0xff){const kind=data[pos.i++];const size=readVlq(data,pos);pos.i+=size;if(kind===47)break;continue;}const a=data[pos.i++], b=data[pos.i++];const key=`${status&15}-${a}`;if((status&0xf0)===0x90&&b){active.set(key,{pitch:a,tick:ticks});}else if((status&0xf0)===0x80||((status&0xf0)===0x90&&!b)){const onset=active.get(key);if(onset){notes.push({pitch:onset.pitch,start:onset.tick/division,duration:Math.max(.12,(ticks-onset.tick)/division)});active.delete(key);}}}}else pos.i++; } const parsed=notes.length?notes.sort((a,b)=>a.start-b.start).slice(0,128):defaultNotes; const cleanName=file.name.replace(/\.(mid|midi)$/i,''); state.notes=parsed; state.songName=cleanName; event.target.value=''; if(state.activeCard){ const pretty=state.activeCard.replaceAll('-',' '); state.covers[state.activeCard]={ songName:cleanName, notes:parsed }; saveCovers(); markCardCovers(); document.querySelector('#song-status').textContent=`Saved “${file.name}” as your ${pretty} cover ✓ — kept in this browser only. Press play to hear it in ${(presets[state.flavor]||{}).title||'this flavor'}.`; refreshSong(); document.querySelector('#listen-title').textContent=`${pretty} · your cover`; } else { document.querySelector('#song-status').textContent=`${parsed.length} little notes planted from “${file.name}”. Have a listen, then change the weather.`; refreshSong(); } } catch(err){ document.querySelector('#song-status').textContent='That file did not look like a MIDI garden path — try a .mid or .midi file.'; } }; reader.readAsArrayBuffer(file); }
+// Parse a MIDI file into {pitch,start,duration} notes (start/duration in quarter-note beats).
+// Each track keeps its OWN clock, and channel messages read the right number of data bytes.
+function parseMidi(buffer) {
+  const data = new Uint8Array(buffer), view = new DataView(buffer);
+  if (String.fromCharCode(...data.slice(0, 4)) !== 'MThd') throw Error('not MIDI');
+  const division = view.getUint16(12) || 480;
+  const pos = { i: 14 }, notes = [];
+  while (pos.i < data.length) {
+    if (String.fromCharCode(...data.slice(pos.i, pos.i + 4)) !== 'MTrk') { pos.i++; continue; }
+    pos.i += 8;
+    let ticks = 0, running = 0; const active = new Map(); // per-track clock — the old bug shared this across tracks
+    while (pos.i < data.length && String.fromCharCode(...data.slice(pos.i, pos.i + 4)) !== 'MTrk') {
+      ticks += readVlq(data, pos);
+      let status = data[pos.i];
+      if (status & 128) { pos.i++; running = status; } else status = running;
+      if (status === 0xff) { const kind = data[pos.i++]; pos.i += readVlq(data, pos); if (kind === 47) break; continue; }
+      if (status === 0xf0 || status === 0xf7) { pos.i += readVlq(data, pos); continue; } // skip sysex
+      const hi = status & 0xf0, a = data[pos.i++], b = (hi === 0xc0 || hi === 0xd0) ? 0 : data[pos.i++]; // C0/D0 carry one data byte
+      const key = `${status & 15}-${a}`;
+      if (hi === 0x90 && b) active.set(key, { pitch: a, tick: ticks });
+      else if (hi === 0x80 || (hi === 0x90 && !b)) { const on = active.get(key); if (on) { notes.push({ pitch: on.pitch, start: on.tick / division, duration: Math.max(.12, (ticks - on.tick) / division) }); active.delete(key); } }
+    }
+  }
+  return notes;
+}
+// Collapse polyphony to a clean top-line melody: highest note at each onset, trimmed to the next onset.
+function skyline(notes) {
+  const byStart = new Map();
+  notes.forEach(n => { const k = Math.round(n.start * 4) / 4; const cur = byStart.get(k); if (!cur || n.pitch > cur.pitch) byStart.set(k, { pitch: n.pitch, start: k, duration: n.duration }); });
+  const arr = [...byStart.values()].sort((a, b) => a.start - b.start);
+  for (let i = 0; i < arr.length - 1; i++) arr[i].duration = Math.max(.12, Math.min(arr[i].duration, arr[i + 1].start - arr[i].start));
+  return arr;
+}
+function importMidi(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const all = parseMidi(reader.result);
+      const parsed = all.length ? skyline(all).slice(0, 600) : defaultNotes;
+      const cleanName = file.name.replace(/\.(mid|midi)$/i, '');
+      state.notes = parsed; state.songName = cleanName; event.target.value = '';
+      if (state.activeCard) {
+        const pretty = state.activeCard.replaceAll('-', ' ');
+        state.covers[state.activeCard] = { songName: cleanName, notes: parsed }; saveCovers(); markCardCovers();
+        document.querySelector('#song-status').textContent = `Saved “${file.name}” as your ${pretty} cover ✓ — kept in this browser only. Press play to hear it in ${(presets[state.flavor] || {}).title || 'this flavor'}.`;
+        refreshSong(); document.querySelector('#listen-title').textContent = `${pretty} · your cover`;
+      } else {
+        document.querySelector('#song-status').textContent = `${parsed.length} little notes planted from “${file.name}”. Have a listen, then change the weather.`;
+        refreshSong();
+      }
+    } catch (err) { document.querySelector('#song-status').textContent = 'That file did not look like a MIDI garden path — try a .mid or .midi file.'; }
+  };
+  reader.readAsArrayBuffer(file);
+}
 setup();
