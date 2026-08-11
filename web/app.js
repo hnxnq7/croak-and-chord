@@ -122,25 +122,27 @@ const VOWEL_FORMANTS = { a: [800, 1150, 2800], e: [500, 1900, 2550], i: [300, 23
 function croakChat(ctx, dry, send, note, start, duration, syllable, detune = 0) {
   const s = syllable.toLowerCase();
   const F = VOWEL_FORMANTS[s.match(/[aeiou]/)?.[0]] || VOWEL_FORMANTS.a;
-  const dur = Math.max(.13, Math.min(duration, .32)), base = midiToHz(note) * Math.pow(2, detune / 1200);
-  const level = ctx.createGain(); level.gain.value = .3; sendTo(ctx, level, dry, send, .28);
-  // Voiced source: saw at pitch, with a tiny onset blip and vibrato that fades in like a held sung note.
+  // Short, articulated syllable — a held vowel just reads as a drone; a quick blip reads as speech.
+  const dur = Math.max(.11, Math.min(duration, .2)), base = midiToHz(note) * Math.pow(2, detune / 1200);
+  const level = ctx.createGain(); level.gain.value = .16; sendTo(ctx, level, dry, send, .22);
   const osc = ctx.createOscillator(); osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(base * .97, start);
-  osc.frequency.linearRampToValueAtTime(base, start + Math.min(.03, dur * .2));
+  osc.frequency.setValueAtTime(base * .96, start);
+  osc.frequency.linearRampToValueAtTime(base, start + Math.min(.03, dur * .3));
   const vib = ctx.createOscillator(); vib.type = 'sine'; vib.frequency.value = 5.5;
-  const vibGain = ctx.createGain(); vibGain.gain.setValueAtTime(0, start); vibGain.gain.linearRampToValueAtTime(base * .013, start + dur * .4);
+  const vibGain = ctx.createGain(); vibGain.gain.setValueAtTime(0, start); vibGain.gain.linearRampToValueAtTime(base * .01, start + dur * .5);
   vib.connect(vibGain).connect(osc.frequency);
   const amp = ctx.createGain();
   amp.gain.setValueAtTime(.0001, start);
-  amp.gain.exponentialRampToValueAtTime(1, start + .02);
-  amp.gain.setValueAtTime(1, start + dur * .68);
+  amp.gain.exponentialRampToValueAtTime(1, start + .012);
+  amp.gain.setValueAtTime(1, start + dur * .5);
   amp.gain.exponentialRampToValueAtTime(.0001, start + dur);
-  F.forEach((freq, k) => { const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = [8, 11, 12][k]; const fg = ctx.createGain(); fg.gain.value = [1, .5, .28][k]; osc.connect(bp).connect(fg).connect(amp); });
+  // The key to hearing a *syllable*: formants glide from a neutral consonant locus INTO the vowel.
+  const glide = Math.min(.06, dur * .5), locus = [560, 1650, 2500];
+  F.forEach((freq, k) => { const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = [6, 7, 8][k]; bp.frequency.setValueAtTime(locus[k], start); bp.frequency.linearRampToValueAtTime(freq, start + glide); const fg = ctx.createGain(); fg.gain.value = [1, .55, .3][k]; osc.connect(bp).connect(fg).connect(amp); });
   amp.connect(level);
-  // Consonant onset: a brief noise tick (bright for s/t/k, softer otherwise) so syllables articulate.
-  if (s[0] && !'aeiou'.includes(s[0])) { const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 'stkcsh'.includes(s[0]) ? 4800 : 1500; bp.Q.value = 1; const ng = ctx.createGain(); ng.gain.setValueAtTime(.4, start); ng.gain.exponentialRampToValueAtTime(.0001, start + .04); src.connect(bp).connect(ng).connect(level); src.start(start); src.stop(start + .05); }
-  osc.start(start); osc.stop(start + dur + .04); vib.start(start); vib.stop(start + dur + .04);
+  // Soft consonant onset (quiet, so it articulates without a jumpscare).
+  if (s[0] && !'aeiou'.includes(s[0])) { const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 'sfhc'.includes(s[0]) ? 3800 : 1300; bp.Q.value = .9; const ng = ctx.createGain(); ng.gain.setValueAtTime('sfhc'.includes(s[0]) ? .13 : .09, start); ng.gain.exponentialRampToValueAtTime(.0001, start + .03); src.connect(bp).connect(ng).connect(level); src.start(start); src.stop(start + .04); }
+  osc.start(start); osc.stop(start + dur + .03); vib.start(start); vib.stop(start + dur + .03);
 }
 const LEADS = { bell, marimba, musicbox: musicBox };
 const COMPS = { kalimba: pluckComp, marimba, guitar };
@@ -195,11 +197,15 @@ function scheduleArrangement(ctx, master, seconds = songSeconds()) {
 
   // Rhythm section: per-bar chord that fits the melody, gentle arpeggio comp, bass, and a cozy groove
   const bars = Math.ceil(seconds / bar);
-  const triads = diatonicTriads(detectScale(state.notes));
+  const tonic = detectScale(state.notes), triads = diatonicTriads(tonic);
+  const scale = MAJ_SCALE.map(d => (tonic + d) % 12);
   let prevChord = null;
   for (let b = 0; b < bars; b++) {
     const ch = chordForBar(melodyNotes, b * 4, b * 4 + 4, prevChord, triads); prevChord = ch;
-    const chord = voiceTones(ch.tones, 52);
+    // Cozy K.K. color: add a diatonic 6th to major chords, a diatonic 7th to minor ones (both in-key, no crunch).
+    const isMajor = ch.tones.includes((ch.root + 4) % 12);
+    const colorPc = (ch.root + (isMajor ? 9 : 10)) % 12;
+    const chord = voiceTones(scale.includes(colorPc) ? [...ch.tones, colorPc] : ch.tones, 52);
     const bassNote = 36 + (((ch.root - 36) % 12) + 12) % 12;
     const steps = state.energy > 1 ? 2 : 1; // subdivisions per beat
     for (let bi = 0; bi < 4; bi++) for (let s = 0; s < steps; s++) {
