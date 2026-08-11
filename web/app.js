@@ -114,21 +114,23 @@ function voiceChord(keyRoot, degree, base) { return triadPitchClasses(keyRoot, d
 // Croak-chat / animalese: a buzzy source shaped by two vowel formants (F1/F2), with a
 // short pitch glide so each syllable "talks". Sits on top of the mix, not buried under it.
 const VOWEL_FORMANTS = { a: [800, 1150], e: [500, 1900], i: [300, 2300], o: [500, 900], u: [330, 800] };
-function croakChat(ctx, dry, send, note, start, duration, syllable) {
+function croakChat(ctx, dry, send, note, start, duration, syllable, detune = 0) {
   const v = syllable.toLowerCase().match(/[aeiou]/)?.[0] || 'a';
   const [f1, f2] = VOWEL_FORMANTS[v] || VOWEL_FORMANTS.a;
-  const dur = Math.max(.13, Math.min(duration, .32)), base = midiToHz(note);
+  const dur = Math.max(.12, Math.min(duration, .3)), base = midiToHz(note) * Math.pow(2, detune / 1200);
   const osc = ctx.createOscillator(); osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(base * .9, start);
-  osc.frequency.linearRampToValueAtTime(base, start + dur * .3); // little talky rise
+  osc.frequency.setValueAtTime(base * .985, start);            // tiny cute blip, not a big scoop
+  osc.frequency.linearRampToValueAtTime(base, start + Math.min(.035, dur * .18));
+  const buzz = ctx.createOscillator(); buzz.type = 'square'; buzz.frequency.value = base * 2; // nasal edge
   const amp = ctx.createGain();
   amp.gain.setValueAtTime(.0001, start);
-  amp.gain.exponentialRampToValueAtTime(1, start + .02);
-  amp.gain.setValueAtTime(1, start + dur * .68);
+  amp.gain.exponentialRampToValueAtTime(1, start + .015);
+  amp.gain.setValueAtTime(1, start + dur * .7);
   amp.gain.exponentialRampToValueAtTime(.0001, start + dur);
-  [[f1, 1, 6], [f2, .5, 9]].forEach(([freq, g, q]) => { const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q; const fg = ctx.createGain(); fg.gain.value = g; osc.connect(bp).connect(fg).connect(amp); });
-  const level = ctx.createGain(); level.gain.value = .21; amp.connect(level); sendTo(ctx, level, dry, send, .3);
-  osc.start(start); osc.stop(start + dur + .03);
+  [[f1, 1, 7], [f2, .55, 10]].forEach(([freq, g, q]) => { const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q; const fg = ctx.createGain(); fg.gain.value = g; osc.connect(bp).connect(fg).connect(amp); });
+  const bg = ctx.createGain(); bg.gain.value = .11; buzz.connect(bg).connect(amp); // bright villager top
+  const level = ctx.createGain(); level.gain.value = .3; amp.connect(level); sendTo(ctx, level, dry, send, .28);
+  osc.start(start); osc.stop(start + dur + .03); buzz.start(start); buzz.stop(start + dur + .03);
 }
 const LEADS = { bell, marimba, musicbox: musicBox };
 const COMPS = { kalimba: pluckComp, marimba, guitar };
@@ -147,14 +149,16 @@ function scheduleArrangement(ctx, master, seconds = songSeconds()) {
   const prog = [0, 4, 5, 3]; // I – V – vi – IV, a cozy diatonic loop
   const melodyNotes = state.notes.filter(n => n.start * beat < seconds);
   const cue = state.vocalText.match(/[a-zA-Z]+/g);
-  const syllables = cue && cue.length ? cue : makeBabble(melodyNotes.length, (melodyNotes.length * 131 + keyRoot * 17 + Math.round(state.tempo)) >>> 0);
+  const vseed = (melodyNotes.length * 131 + keyRoot * 17 + Math.round(state.tempo)) >>> 0;
+  const syllables = cue && cue.length ? cue : makeBabble(melodyNotes.length, vseed);
+  const vjit = seededRand(vseed ^ 0x9e3779b9); // slight, occasional pitch drift — a little off, on purpose
 
   // Lead line: the flavor's chosen voice, with a soft woodwind answer on higher energy
   melodyNotes.forEach((n, i) => {
     const t = n.start * beat + (i % 2 ? swingAmt * beat * .5 : 0);
     const dur = Math.min((n.duration || .4) * beat, .9);
     lead(ctx, dry, send, n.pitch, t, dur, .12);
-    if (state.vocalEnabled) croakChat(ctx, dry, send, n.pitch, t, Math.min(dur, .26), syllables[i % syllables.length]);
+    if (state.vocalEnabled) { const detune = vjit() < .28 ? (vjit() * 2 - 1) * 32 : (vjit() * 2 - 1) * 7; croakChat(ctx, dry, send, n.pitch, t, Math.min(dur, .28), syllables[i % syllables.length], detune); }
     if (state.energy > 1 && i % 4 === 2) softLead(ctx, dry, send, n.pitch + 3, t + beat * .5, .3, .05);
   });
 
