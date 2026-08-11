@@ -1,10 +1,10 @@
 const state = { flavor: 'sunny', tempo: 108, energy: 2, swing: 1, songName: 'Little Day Out', notes: [], vocalEnabled: false, vocalText: '', playing: false, context: null, timers: [] };
 
 const presets = {
-  sunny: { title: 'Sunny dock', tempo: 108, subtitle: 'bouncy bells · little handclaps', color: '#61b982' },
-  rainy: { title: 'Rainy cabin', tempo: 84, subtitle: 'soft kalimba · window rain', color: '#6eb9c6' },
-  seaside: { title: 'Saltwater stroll', tempo: 100, subtitle: 'breezy marimba · tide taps', color: '#4aaebf' },
-  evening: { title: 'Lantern tide', tempo: 76, subtitle: 'warm music box · sleepy bass', color: '#8c81b5' },
+  sunny: { title: 'Sunny dock', tempo: 108, subtitle: 'bouncy bells · little handclaps', color: '#61b982', lead: 'bell', comp: 'kalimba', reverb: .3, brightness: 7200, pad: false },
+  rainy: { title: 'Rainy cabin', tempo: 84, subtitle: 'soft kalimba · window rain', color: '#6eb9c6', lead: 'musicbox', comp: 'kalimba', reverb: .55, brightness: 4800, pad: true },
+  seaside: { title: 'Saltwater stroll', tempo: 100, subtitle: 'breezy marimba · tide taps', color: '#4aaebf', lead: 'marimba', comp: 'marimba', reverb: .42, brightness: 6200, pad: false },
+  evening: { title: 'Lantern tide', tempo: 76, subtitle: 'warm music box · sleepy bass', color: '#8c81b5', lead: 'musicbox', comp: 'guitar', reverb: .62, brightness: 4200, pad: true },
 };
 const songSuitcases = {
   odoriko: { flavor: 'rainy', tempo: 96, energy: 2, label: 'Odoriko suitcase is packed: rainy sparkle, a close little band, and room for your MIDI.' },
@@ -13,6 +13,15 @@ const songSuitcases = {
 };
 const defaultNotes = [72,74,76,79,76,74,72,69, 72,74,76,81,79,76,74,72, 69,72,74,76,74,72,69,67, 69,71,72,74,72,69,67,64]
   .map((pitch, index) => ({ pitch, start: index * .5, duration: index % 7 === 0 ? .85 : .42 }));
+// Turn [pitch, beats] pairs into timed notes, and loop a motif to fill the sketch.
+function seq(pairs) { let t = 0; return pairs.map(([pitch, dur]) => { const n = { pitch, start: t, duration: dur }; t += dur; return n; }); }
+function loopSeq(notes, times) { const span = notes.length ? notes[notes.length - 1].start + notes[notes.length - 1].duration : 0; const out = []; for (let k = 0; k < times; k++) notes.forEach(n => out.push({ pitch: n.pitch, start: n.start + span * k, duration: n.duration })); return out; }
+// Original short motifs — not transcriptions, just melodies that fit each card's mood.
+const cardMelodies = {
+  odoriko: loopSeq(seq([[76,.5],[74,.5],[72,.5],[74,.5], [76,.5],[79,.5],[76,.75],[72,.25], [74,.5],[72,.5],[69,.5],[72,.5], [74,.5],[76,.5],[74,1]]), 2),
+  vampire: loopSeq(seq([[74,.5],[72,.5],[70,.5],[69,.75], [69,.25],[72,.5],[74,.5],[77,.5], [76,.5],[74,.5],[72,.5],[70,.5], [69,.5],[67,.5],[65,1]]), 2),
+  'what-is-love': loopSeq(seq([[67,.5],[69,.5],[67,.25],[64,.75], [60,.5],[64,.5],[67,.5],[69,.5], [67,.5],[64,.5],[62,.5],[60,.5], [62,.5],[64,.5],[67,1]]), 2),
+};
 const instruments = [
   ['✦','Glockenspiel','the bright little lead'],
   ['⌁','Kalimba','soft chord sparkle'],
@@ -40,7 +49,7 @@ function setup() {
   document.querySelector('#download-button').addEventListener('click', downloadWav);
   document.querySelector('.share-button').addEventListener('click', () => { navigator.clipboard?.writeText(location.href); const button = document.querySelector('.share-button'); button.textContent = '✓ Link copied'; setTimeout(() => button.textContent = '↗ Share', 1500); });
 }
-function loadSuitcase(name) { const suitcase = songSuitcases[name]; setFlavor(suitcase.flavor); state.tempo = suitcase.tempo; state.energy = suitcase.energy; document.querySelector('#tempo').value = state.tempo; document.querySelector('#energy').value = state.energy; document.querySelector('#tempo-value').textContent = state.tempo; document.querySelector('#tempo-output').textContent = `${state.tempo} bpm`; document.querySelector('#energy-output').textContent = ['gentle', 'just right', 'full of beans'][state.energy - 1]; document.querySelectorAll('.song-demo').forEach(button => button.classList.toggle('active', button.dataset.demo === name)); document.querySelector('#demo-note').textContent = suitcase.label; document.querySelector('#song-status').textContent = `Loaded the ${name.replaceAll('-', ' ')} setup. Press play for an original sketch, or add your permitted MIDI below for the real cover.`; document.querySelector('#listen-title').textContent = `${name.replaceAll('-', ' ')} · setup sketch`; renderTracks(); }
+function loadSuitcase(name) { const suitcase = songSuitcases[name]; setFlavor(suitcase.flavor); state.tempo = suitcase.tempo; state.energy = suitcase.energy; document.querySelector('#tempo').value = state.tempo; document.querySelector('#energy').value = state.energy; document.querySelector('#tempo-value').textContent = state.tempo; document.querySelector('#tempo-output').textContent = `${state.tempo} bpm`; document.querySelector('#energy-output').textContent = ['gentle', 'just right', 'full of beans'][state.energy - 1]; document.querySelectorAll('.song-demo').forEach(button => button.classList.toggle('active', button.dataset.demo === name)); document.querySelector('#demo-note').textContent = suitcase.label; if (cardMelodies[name]) { state.notes = cardMelodies[name]; state.songName = `${name.replaceAll('-', ' ')} sketch`; } document.querySelector('#song-status').textContent = `Loaded the ${name.replaceAll('-', ' ')} setup with an original melody sketch. Press play, or add your permitted MIDI below for the real cover.`; document.querySelector('#listen-title').textContent = `${name.replaceAll('-', ' ')} · setup sketch`; makeWave(); renderTracks(); }
 function setFlavor(flavor) { state.flavor = flavor; const preset = presets[flavor]; state.tempo = preset.tempo; document.querySelector('#tempo').value = state.tempo; document.querySelector('#tempo-value').textContent = state.tempo; document.querySelector('#tempo-output').textContent = `${state.tempo} bpm`; document.querySelector('#arrangement-title').textContent = preset.title; document.querySelector('#listen-subtitle').textContent = `${preset.subtitle} · instrumental`; document.querySelectorAll('.flavor').forEach(b => { const chosen = b.dataset.flavor === flavor; b.classList.toggle('selected', chosen); b.setAttribute('aria-checked', chosen); }); makeWave(); renderTracks(); }
 function refreshSong() { document.querySelector('#listen-title').textContent = state.songName; makeWave(); renderTracks(); }
 function makeWave() { const root = document.querySelector('#waveform'); root.replaceChildren(); const seed = state.flavor.charCodeAt(0); for (let i=0;i<80;i++) { const bar = document.createElement('i'); const height = 8 + ((i * seed + i * i * 7) % 35); bar.style.height = `${height}px`; bar.style.background = presets[state.flavor].color; root.append(bar); } }
@@ -48,11 +57,15 @@ function renderTracks() { const root = document.querySelector('#tracks'); root.r
 function midiToHz(note) { return 440 * Math.pow(2, (note - 69) / 12); }
 // --- Cozy sound engine: a small warm room with a handful of soft instruments ---
 function makeReverb(ctx) { const len = Math.floor(ctx.sampleRate * 1.7); const buf = ctx.createBuffer(2, len, ctx.sampleRate); for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); } const conv = ctx.createConvolver(); conv.buffer = buf; return conv; }
-function buildEngine(ctx, master) { const dry = ctx.createGain(); dry.gain.value = .9; const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6800; dry.connect(lp).connect(master); const send = makeReverb(ctx); const wet = ctx.createGain(); wet.gain.value = .45; send.connect(wet); wet.connect(master); return { dry, send }; }
+function buildEngine(ctx, master, pal = {}) { const dry = ctx.createGain(); dry.gain.value = .9; const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = pal.brightness || 6800; dry.connect(lp).connect(master); const send = makeReverb(ctx); const wet = ctx.createGain(); wet.gain.value = pal.reverb ?? .45; send.connect(wet); wet.connect(master); return { dry, send }; }
 function sendTo(ctx, amp, dry, send, wetAmt) { amp.connect(dry); if (send) { const s = ctx.createGain(); s.gain.value = wetAmt; amp.connect(s); s.connect(send); } }
 function noiseBuffer(ctx) { if (ctx._noise) return ctx._noise; const len = Math.floor(ctx.sampleRate * .5); const buf = ctx.createBuffer(1, len, ctx.sampleRate); const d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; ctx._noise = buf; return buf; }
 // Bell / glockenspiel — bright inharmonic partials, the sparkly lead
 function bell(ctx, dry, send, note, t, dur, gain) { const f = midiToHz(note), d = Math.max(dur, .5); [[1, gain, d], [3.01, gain * .35, d * .6], [5.4, gain * .12, d * .4]].forEach(([ratio, g, dd]) => { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * ratio; const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(g, t + .006); a.gain.exponentialRampToValueAtTime(.0001, t + dd); o.connect(a); sendTo(ctx, a, dry, send, .3); o.start(t); o.stop(t + dd + .05); }); }
+// Marimba lead — woodier and shorter than the bell
+function marimba(ctx, dry, send, note, t, dur, gain) { const f = midiToHz(note), d = Math.max(Math.min(dur, .55), .3); [[1, gain, d], [4.0, gain * .22, d * .45]].forEach(([ratio, g, dd]) => { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * ratio; const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(g, t + .005); a.gain.exponentialRampToValueAtTime(.0001, t + dd); o.connect(a); sendTo(ctx, a, dry, send, .3); o.start(t); o.stop(t + dd + .05); }); }
+// Music box — soft, gentle attack, long dreamy tail
+function musicBox(ctx, dry, send, note, t, dur, gain) { const f = midiToHz(note), d = Math.max(dur, .7); [[1, gain, d], [2.0, gain * .2, d * .7], [3.9, gain * .09, d * .45]].forEach(([ratio, g, dd]) => { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * ratio; const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(g, t + .014); a.gain.exponentialRampToValueAtTime(.0001, t + dd); o.connect(a); sendTo(ctx, a, dry, send, .4); o.start(t); o.stop(t + dd + .05); }); }
 // Woodwind-ish soft answer — gentle attack, holds, fades
 function softLead(ctx, dry, send, note, t, dur, gain) { const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = midiToHz(note); const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(gain, t + .04); a.gain.setValueAtTime(gain, t + dur * .6); a.gain.exponentialRampToValueAtTime(.0001, t + dur); o.connect(a); sendTo(ctx, a, dry, send, .35); o.start(t); o.stop(t + dur + .05); }
 // Kalimba / marimba pluck — woody, quick decay, the chord comp
@@ -70,19 +83,23 @@ function detectKey(notes) { const w = new Array(12).fill(0); notes.forEach(n => 
 function triadPitchClasses(keyRoot, degree) { return [0, 2, 4].map(s => (keyRoot + MAJOR[(degree + s) % 7]) % 12); }
 function voiceChord(keyRoot, degree, base) { return triadPitchClasses(keyRoot, degree).map(pc => base + (((pc - base) % 12) + 12) % 12); }
 function croakChat(ctx, dry, send, note, start, duration, syllable) { const vowel = ({a:1.00,e:1.22,i:1.48,o:.83,u:.70}[syllable.toLowerCase().match(/[aeiou]/)?.[0]] || 1); const osc = ctx.createOscillator(), formant = ctx.createBiquadFilter(), amp = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(midiToHz(note) * .5, start); osc.frequency.exponentialRampToValueAtTime(midiToHz(note) * vowel, start + Math.min(.05, duration * .25)); formant.type='bandpass'; formant.Q.value=8; formant.frequency.value=900 + vowel * 520; amp.gain.setValueAtTime(.0001,start); amp.gain.exponentialRampToValueAtTime(.042,start+.016); amp.gain.exponentialRampToValueAtTime(.0001,start+Math.min(duration,.19)); osc.connect(formant).connect(amp); sendTo(ctx, amp, dry, send, .25); osc.start(start); osc.stop(start+Math.min(duration,.2)+.02); }
+const LEADS = { bell, marimba, musicbox: musicBox };
+const COMPS = { kalimba: pluckComp, marimba, guitar };
 function scheduleArrangement(ctx, master, seconds=19) {
-  const { dry, send } = buildEngine(ctx, master);
+  const pal = presets[state.flavor] || {};
+  const { dry, send } = buildEngine(ctx, master, pal);
+  const lead = LEADS[pal.lead] || bell, comp = COMPS[pal.comp] || pluckComp;
   const beat = 60 / state.tempo, bar = beat * 4;
   const swingAmt = [0, .06, .12][state.swing] || 0;
   const keyRoot = detectKey(state.notes);
   const prog = [0, 4, 5, 3]; // I – V – vi – IV, a cozy diatonic loop
   const syllables = (state.vocalText.match(/[a-zA-Z]+/g) || ['la','di','da','do','mi']);
 
-  // Lead line: the bright bell, with a soft woodwind answer on higher energy
+  // Lead line: the flavor's chosen voice, with a soft woodwind answer on higher energy
   state.notes.filter(n => n.start * beat < seconds).forEach((n, i) => {
     const t = n.start * beat + (i % 2 ? swingAmt * beat * .5 : 0);
     const dur = Math.min((n.duration || .4) * beat, .9);
-    bell(ctx, dry, send, n.pitch, t, dur, .12);
+    lead(ctx, dry, send, n.pitch, t, dur, .12);
     if (state.vocalEnabled) croakChat(ctx, dry, send, n.pitch, t, Math.min(dur, .26), syllables[i % syllables.length]);
     if (state.energy > 1 && i % 4 === 2) softLead(ctx, dry, send, n.pitch + 3, t + beat * .5, .3, .05);
   });
@@ -98,9 +115,10 @@ function scheduleArrangement(ctx, master, seconds=19) {
     for (let s = 0; s < steps; s++) {
       const t = b * bar + s * (bar / steps) + (s % 2 ? swingAmt * beat * .5 : 0);
       if (t >= seconds) break;
-      pluckComp(ctx, dry, send, chord[s % chord.length] + (s >= chord.length && steps > 3 ? 12 : 0), t, bar / steps * .9, .05);
+      comp(ctx, dry, send, chord[s % chord.length] + (s >= chord.length && steps > 3 ? 12 : 0), t, bar / steps * .9, .05);
     }
-    if (state.energy > 1) chord.forEach(p => guitar(ctx, dry, send, p, b * bar + .01, beat * 1.4, .026));
+    if (pal.pad) chord.forEach(p => softLead(ctx, dry, send, p - 12, b * bar, bar * .95, .02));
+    if (state.energy > 1 && pal.comp !== 'guitar') chord.forEach(p => guitar(ctx, dry, send, p, b * bar + .01, beat * 1.4, .026));
     bass(ctx, dry, send, bassNote, b * bar, beat * .9, .11);
     if (b * bar + 2 * beat < seconds) bass(ctx, dry, send, bassNote + (state.energy > 2 ? 7 : 0), b * bar + 2 * beat, beat * .9, .09);
     if (state.energy > 1) for (let e = 0; e < 4; e++) { const t = b * bar + e * beat + beat * .5 + swingAmt * beat * .5; if (t < seconds) shaker(ctx, dry, t, .035); }
