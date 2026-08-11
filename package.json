@@ -1,5 +1,5 @@
 {
-  "name": "hearthsong-cover-lab",
+  "name": "croak-and-chord-cover-lab",
   "private": true,
   "version": "0.1.0",
   "scripts": { "start": "python3 -m http.server 4173 --directory web" }
