@@ -1,5 +1,12 @@
 # Product and technical design
 
+## Confirmed v1 product decisions
+
+- It is a web app, with a browser-playable, shareable instrumental output.
+- v1 starts with songs supplied as MIDI and/or chord data; reference audio is optional.
+- Animalese-style vocalizing is a future feature, designed as a separate renderer.
+- WAV/MP3 export is the primary deliverable; MIDI remains an internal/import-edit format.
+
 ## The sound: a controllable family, not a single preset
 
 The target is a set of musical behaviors. A good arrangement generally combines these levers:
@@ -73,10 +80,11 @@ Tracks for the first arranger: lead, countermelody, chord comp, bass, hand percu
 
 ## Milestones
 
-1. **Playable vertical slice:** import MIDI, choose a preset, arrange, export MIDI. No ML ambiguity.
-2. **Editable audio path:** audio upload, beat/key/form detection, user enters/corrects chords and melody.
-3. **Assisted transcription:** chord/melody candidates with confidence and review workflow.
-4. **Polish:** source separation option, preview streaming, shares/private projects, more palettes.
+1. **Playable vertical slice:** import MIDI/chords, choose a preset, arrange, render an in-browser instrumental player, and share/export WAV/MP3. No ML ambiguity.
+2. **Editor polish:** editable piano roll, chord timeline, arrangement controls, saved projects, and private share links.
+3. **Animalese vocal renderer:** convert a melody plus optional lyrics/syllable map into original synthesized vocalizations; keep this opt-in and separately mixed.
+4. **Assisted transcription:** audio upload, chord/melody candidates with confidence and review workflow.
+5. **Polish:** source separation option, more palettes, and richer collaboration/export.
 
 ## Deliberate non-goals for v1
 

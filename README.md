@@ -4,7 +4,7 @@ Turn a song the listener has rights to use into a playful, game-inspired instrum
 
 ## Product idea
 
-Upload an audio file, select a **flavor**, review a compact editable arrangement, then export a MIDI file and a rendered cover. The creative target is the broader cozy, toy-instrument, village-daytime feeling associated with Animal Crossing rather than one fixed game's soundtrack.
+Start from MIDI and/or a chord chart, select a **flavor**, review a compact editable arrangement, then play and share a rendered instrumental cover in the browser. The creative target is the broader cozy, toy-instrument, village-daytime feeling associated with Animal Crossing rather than one fixed game's soundtrack.
 
 ## Flavor controls
 
@@ -18,7 +18,7 @@ Upload an audio file, select a **flavor**, review a compact editable arrangement
 
 ## What users provide
 
-**Required:** a WAV, MP3, or M4A. WAV/FLAC is preferred. Stereo, clean files work best.
+**First release required:** MIDI and/or a chord chart. The app can accept optional reference audio, but it does not depend on transcribing a full mix.
 
 **Helpful, optional:** MIDI, chord chart, tempo/key, official or user-made instrumental/stems, and timestamps for key sections. Lyrics alone do not reliably identify pitch or rhythm; they are useful as a lyric-to-phrase guide when making a vocal melody playable by an instrument.
 
@@ -26,17 +26,17 @@ The app should ask the uploader to confirm that they own the audio or have permi
 
 ## First MVP
 
-1. Upload audio and choose a flavor preset.
-2. Detect tempo/downbeats, key candidates, sections, chord candidates, and a lead-melody candidate.
-3. Show an editable piano-roll + chord timeline; manual correction is a core feature, not a fallback failure.
-4. Arrange to a small toy-instrument palette and render a preview.
-5. Export MIDI, WAV, and the arrangement JSON.
+1. Import MIDI and/or enter a chord chart, then choose a flavor preset.
+2. Build a song chart and show it in an editable piano-roll + chord timeline.
+3. Arrange to a small toy-instrument palette and render a browser-playable preview.
+4. Share/export WAV or MP3 and the arrangement JSON.
+5. Add assisted full-mix transcription in a later release.
 
 See [the product and technical design](docs/design.md) for the pipeline, data model, and milestones.
 
 ## Suggested stack
 
-- **Frontend:** React + TypeScript, waveform/transport, piano-roll editor.
+- **Frontend:** React + TypeScript, browser audio transport, piano-roll editor, and shareable player.
 - **API/workers:** Python (FastAPI + a job queue) for audio/ML work and deterministic arrangement.
 - **Audio/MIDI:** librosa or Essentia for analysis, a source-separation worker when needed, PrettyMIDI/mido for MIDI, and a SoundFont or licensed instrument library for rendering.
 - **Storage:** object storage for short-lived source/preview files; PostgreSQL for projects and edits.
