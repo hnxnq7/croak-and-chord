@@ -28,6 +28,15 @@
       </section>
 
       <section class="studio" aria-label="Cover maker">
+        <section class="song-suitcase" aria-labelledby="suitcase-title">
+          <div class="suitcase-heading"><div><p class="eyebrow">A FEW TRIPS TO START WITH</p><h2 id="suitcase-title">Pack a song suitcase</h2></div><span>🧳</span></div>
+          <div class="demo-grid">
+            <button class="song-demo demo-odoriko" type="button" data-demo="odoriko"><span class="demo-orb">◒</span><span class="demo-copy"><b>Odoriko</b><small>night-walk sparkle</small></span><span class="demo-arrow">↗</span></button>
+            <button class="song-demo demo-vampire" type="button" data-demo="vampire"><span class="demo-orb">♥</span><span class="demo-copy"><b>vampire</b><small>lantern-heart ache</small></span><span class="demo-arrow">↗</span></button>
+            <button class="song-demo demo-what-is-love" type="button" data-demo="what-is-love"><span class="demo-orb">✦</span><span class="demo-copy"><b>What Is Love?</b><small>sunny pop confetti</small></span><span class="demo-arrow">↗</span></button>
+          </div>
+          <p id="demo-note" class="demo-note">These set up an original arrangement recipe. Add a MIDI you’re allowed to use to make it your cover.</p>
+        </section>
         <div class="step-label"><span>1</span> A SONG TO TEND</div>
         <div class="import-row">
           <label class="drop-zone" for="midi-input">
@@ -64,7 +73,10 @@
             <label class="control">Energy <output id="energy-output">just right</output><input id="energy" type="range" min="1" max="3" value="2" /></label>
             <label class="control">Tempo <output id="tempo-output">108 bpm</output><input id="tempo" type="range" min="70" max="150" value="108" /></label>
             <label class="control">Swing <output id="swing-output">a little</output><input id="swing" type="range" min="0" max="2" value="1" /></label>
-            <div class="vocal-wish"><span>✧</span><p><strong>Animalese vocals</strong><br />A sweet future upgrade — keep this one instrumental for now.</p></div>
+            <div class="vocal-maker">
+              <div class="vocal-title"><span>✧</span><p><strong>Croak-chat vocals</strong><small>an original, animal-like melody voice</small></p><label class="toggle"><input id="vocal-toggle" type="checkbox" /><span></span></label></div>
+              <label class="lyric-field" for="vocal-text">Syllables or a lyric cue<input id="vocal-text" maxlength="120" placeholder="la la, tiny boat, hello…" disabled /></label>
+            </div>
           </aside>
         </div>
 
