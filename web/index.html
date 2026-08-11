@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6bd76" />
+    <title>Hearthsong — cozy cover maker</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <nav class="topbar" aria-label="Main navigation">
+        <a class="brand" href="#top" aria-label="Hearthsong home">
+          <span class="brand-mark">✿</span><span>hearthsong</span>
+        </a>
+        <div class="nav-actions">
+          <span class="autosave"><i></i> saved in your garden</span>
+          <button class="avatar" type="button" aria-label="Your profile">R</button>
+        </div>
+      </nav>
+
+      <section class="hero" id="top">
+        <p class="eyebrow">YOUR LITTLE ARRANGEMENT STUDIO</p>
+        <h1>Make a familiar song<br /><em>feel like a tiny day out.</em></h1>
+        <p class="hero-copy">Bring a MIDI or chord chart. We’ll dress it in soft bells, wooden rhythms, and sunlit little details.</p>
+        <div class="cloud cloud-one"></div><div class="cloud cloud-two"></div>
+        <div class="hill hill-one"></div><div class="hill hill-two"></div>
+      </section>
+
+      <section class="studio" aria-label="Cover maker">
+        <div class="step-label"><span>1</span> A SONG TO TEND</div>
+        <div class="import-row">
+          <label class="drop-zone" for="midi-input">
+            <input id="midi-input" type="file" accept=".mid,.midi,audio/midi,audio/x-midi" />
+            <span class="music-note">♫</span>
+            <span><strong>Drop in a MIDI file</strong><small>or choose a file from your computer</small></span>
+            <span class="choose">choose file</span>
+          </label>
+          <button id="demo-button" class="text-button" type="button">use the cozy demo instead ↗</button>
+        </div>
+        <p id="song-status" class="song-status">No song selected yet — the demo melody is ready when you are.</p>
+
+        <div class="step-label flavor-label"><span>2</span> PICK THE WEATHER</div>
+        <div id="flavor-grid" class="flavor-grid" role="radiogroup" aria-label="Arrangement flavor">
+          <button class="flavor selected" type="button" data-flavor="sunny" role="radio" aria-checked="true"><b>☀</b><span>Sunny plaza</span><small>bouncy & bright</small></button>
+          <button class="flavor" type="button" data-flavor="rainy" role="radio" aria-checked="false"><b>☂</b><span>Rainy window</span><small>soft & close</small></button>
+          <button class="flavor" type="button" data-flavor="seaside" role="radio" aria-checked="false"><b>⌇</b><span>Seaside stroll</span><small>breezy & blue</small></button>
+          <button class="flavor" type="button" data-flavor="evening" role="radio" aria-checked="false"><b>☾</b><span>Lantern evening</span><small>warm & slow</small></button>
+        </div>
+
+        <div class="step-label mix-label"><span>3</span> YOUR LITTLE BAND</div>
+        <div class="mix-layout">
+          <section class="arrangement-card">
+            <div class="card-heading"><div><p>ARRANGEMENT</p><h2 id="arrangement-title">Sunny plaza</h2></div><span class="tempo-pill"><span id="tempo-value">108</span> bpm</span></div>
+            <div class="wave-wrap" aria-label="Arrangement timeline">
+              <div id="waveform" class="waveform"></div>
+              <div class="playhead"></div>
+              <div class="timeline-labels"><span>0:00</span><span>0:12</span><span>0:24</span><span>0:36</span></div>
+            </div>
+            <div class="tracks" id="tracks"></div>
+          </section>
+          <aside class="settings-card">
+            <div class="card-heading"><div><p>GENTLE TUNING</p><h2>Make it yours</h2></div><span class="flower">✿</span></div>
+            <label class="control">Energy <output id="energy-output">just right</output><input id="energy" type="range" min="1" max="3" value="2" /></label>
+            <label class="control">Tempo <output id="tempo-output">108 bpm</output><input id="tempo" type="range" min="70" max="150" value="108" /></label>
+            <label class="control">Swing <output id="swing-output">a little</output><input id="swing" type="range" min="0" max="2" value="1" /></label>
+            <div class="vocal-wish"><span>✧</span><p><strong>Animalese vocals</strong><br />A sweet future upgrade — keep this one instrumental for now.</p></div>
+          </aside>
+        </div>
+
+        <section class="listen-bar" aria-label="Listen to your cover">
+          <button id="play-button" class="play-button" type="button" aria-label="Play arrangement"><span>▶</span></button>
+          <div class="listen-copy"><p id="listen-title">Little Day Out</p><span id="listen-subtitle">sunny plaza arrangement · instrumental</span></div>
+          <div class="listen-actions"><button id="download-button" type="button">⇩ Download WAV</button><button class="share-button" type="button">↗ Share</button></div>
+        </section>
+      </section>
+      <footer>Made for your own music garden · always check you have permission to transform and share a song.</footer>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

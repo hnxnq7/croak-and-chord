@@ -46,4 +46,13 @@ See [the product and technical design](docs/design.md) for the pipeline, data mo
 ```
 docs/                product and technical decisions
 src/ac_cover_lab/    domain models and arrangement engine (initially)
+web/                 dependency-free first interactive prototype
 ```
+
+## Run the prototype
+
+```sh
+npm start
+```
+
+Open `http://localhost:4173`. It includes a cozy demo, MIDI import, four arrangement flavors, live browser playback, and WAV download. The synthesizer uses original simple oscillator voices while the licensed/original instrument palette is still to come.
