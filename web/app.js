@@ -173,7 +173,7 @@ function voiceTones(tones, base) { return tones.map(pc => base + (((pc - base) %
 // Soft cozy kick and a light rim tap for the groove.
 function kick(ctx, dry, t, gain) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(46, t + .11); const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(gain, t + .006); a.gain.exponentialRampToValueAtTime(.0001, t + .18); o.connect(a).connect(dry); o.start(t); o.stop(t + .2); }
 function rim(ctx, dry, t, gain) { const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = 1.4; const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(gain, t + .003); a.gain.exponentialRampToValueAtTime(.0001, t + .07); src.connect(bp).connect(a).connect(dry); src.start(t); src.stop(t + .09); }
-function scheduleArrangement(ctx, master, seconds = songSeconds()) {
+function scheduleArrangement(ctx, master, seconds = songSeconds(), t0 = 0) {
   const pal = presets[state.flavor] || {};
   const { dry, send } = buildEngine(ctx, master, pal);
   const lead = LEADS[pal.lead] || bell, comp = COMPS[pal.comp] || pluckComp;
@@ -188,7 +188,7 @@ function scheduleArrangement(ctx, master, seconds = songSeconds()) {
 
   // Lead line (on the grid, no swing): the flavor's voice, with a soft answer on higher energy
   melodyNotes.forEach((n, i) => {
-    const t = n.start * beat;
+    const t = t0 + n.start * beat;
     const dur = Math.min((n.duration || .4) * beat, .9);
     lead(ctx, dry, send, n.pitch, t, dur, .12);
     if (state.vocalEnabled) { const detune = vjit() < .28 ? (vjit() * 2 - 1) * 32 : (vjit() * 2 - 1) * 7; croakChat(ctx, dry, send, n.pitch, t, Math.min(dur, .28), syllables[i % syllables.length], detune); }
@@ -196,7 +196,7 @@ function scheduleArrangement(ctx, master, seconds = songSeconds()) {
   });
 
   // Rhythm section: per-bar chord that fits the melody, gentle arpeggio comp, bass, and a cozy groove
-  const bars = Math.ceil(seconds / bar);
+  const bars = Math.ceil(seconds / bar), end = t0 + seconds;
   const tonic = detectScale(state.notes), triads = diatonicTriads(tonic);
   const scale = MAJ_SCALE.map(d => (tonic + d) % 12);
   // Cozy K.K. color: add a diatonic 6th to major chords, a diatonic 7th to minor ones (both in-key).
@@ -208,22 +208,41 @@ function scheduleArrangement(ctx, master, seconds = songSeconds()) {
     for (let h = 0; h < 2; h++) {
       const lo = b * 4 + h * 2;
       const ch = chordForBar(melodyNotes, lo, lo + 2, prevChord, triads); prevChord = ch;
-      const chord = voiceColored(ch), bassNote = 36 + (((ch.root - 36) % 12) + 12) % 12, half = b * bar + h * 2 * beat;
+      const chord = voiceColored(ch), bassNote = 36 + (((ch.root - 36) % 12) + 12) % 12, half = t0 + b * bar + h * 2 * beat;
       for (let bi = 0; bi < 2; bi++) for (let s = 0; s < steps; s++) {
         const t = half + bi * beat + s * (beat / steps) + (s ? swingAmt * beat * .5 : 0);
-        if (t < seconds) comp(ctx, dry, send, chord[(bi * steps + s) % chord.length], t, beat / steps * .9, .045);
+        if (t < end) comp(ctx, dry, send, chord[(bi * steps + s) % chord.length], t, beat / steps * .9, .045);
       }
       if (pal.pad) chord.forEach(p => softLead(ctx, dry, send, p - 12, half, bar * .48, .022));
-      if (half < seconds) bass(ctx, dry, send, bassNote + (h && state.energy > 2 ? 7 : 0), half, beat * .9, h ? .1 : .12);
+      if (half < end) bass(ctx, dry, send, bassNote + (h && state.energy > 2 ? 7 : 0), half, beat * .9, h ? .1 : .12);
     }
-    kick(ctx, dry, b * bar, .4);
-    if (state.energy > 1 && b * bar + 2 * beat < seconds) kick(ctx, dry, b * bar + 2 * beat, .32);
-    if (state.energy > 1) for (let e = 0; e < 4; e++) { const t = b * bar + e * beat + beat * .5 + swingAmt * beat * .5; if (t < seconds) shaker(ctx, dry, t, .026); }
-    if (state.energy > 2) for (const e of [1, 3]) { const t = b * bar + e * beat; if (t < seconds) rim(ctx, dry, t, .05); }
+    kick(ctx, dry, t0 + b * bar, .4);
+    const k2 = t0 + b * bar + 2 * beat; if (state.energy > 1 && k2 < end) kick(ctx, dry, k2, .32);
+    if (state.energy > 1) for (let e = 0; e < 4; e++) { const t = t0 + b * bar + e * beat + beat * .5 + swingAmt * beat * .5; if (t < end) shaker(ctx, dry, t, .026); }
+    if (state.energy > 2) for (const e of [1, 3]) { const t = t0 + b * bar + e * beat; if (t < end) rim(ctx, dry, t, .05); }
   }
 }
-function togglePlay() { if (state.playing) return stopPlay(); const secs = songSeconds(); state.context = new AudioContext(); const master = makeMaster(state.context); scheduleArrangement(state.context, master, secs); state.playing=true; document.querySelector('#play-button span').textContent='■'; document.querySelector('.playhead').getAnimations().forEach(a => a.cancel()); document.querySelector('.playhead').animate([{left:'0%'},{left:'100%'}],{duration:secs*1000,iterations:1}); state.timers.push(setTimeout(stopPlay, secs*1000+400)); }
-function stopPlay() { state.timers.forEach(clearTimeout); state.timers=[]; state.context?.close(); state.context=null; state.playing=false; document.querySelector('#play-button span').textContent='▶'; }
+// Reuse ONE AudioContext (browsers cap you at ~6, and fresh ones can start suspended → silent play).
+function togglePlay() {
+  if (state.playing) return stopPlay();
+  if (!state.context) state.context = new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = state.context; if (ctx.state === 'suspended') ctx.resume();
+  const secs = songSeconds(), t0 = ctx.currentTime + .06;
+  state.master = makeMaster(ctx);
+  scheduleArrangement(ctx, state.master, secs, t0);
+  state.playing = true;
+  document.querySelector('#play-button span').textContent = '■';
+  const ph = document.querySelector('.playhead'); ph.getAnimations().forEach(a => a.cancel());
+  ph.animate([{ left: '0%' }, { left: '100%' }], { duration: secs * 1000, iterations: 1 });
+  state.timers.push(setTimeout(stopPlay, secs * 1000 + 400));
+}
+function stopPlay() {
+  state.timers.forEach(clearTimeout); state.timers = [];
+  if (state.master) { try { state.master.disconnect(); } catch (e) {} state.master = null; } // cut sound; scheduled voices self-stop
+  state.playing = false;
+  document.querySelector('#play-button span').textContent = '▶';
+  const ph = document.querySelector('.playhead'); if (ph) ph.getAnimations().forEach(a => a.cancel());
+}
 function bufferToWav(buffer) { const channels=buffer.numberOfChannels, length=buffer.length*channels*2+44, view=new DataView(new ArrayBuffer(length)); const write=(o,s)=>[...s].forEach((c,i)=>view.setUint8(o+i,c.charCodeAt(0))); write(0,'RIFF');view.setUint32(4,36+buffer.length*channels*2,true);write(8,'WAVEfmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,channels,true);view.setUint32(24,buffer.sampleRate,true);view.setUint32(28,buffer.sampleRate*channels*2,true);view.setUint16(32,channels*2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,buffer.length*channels*2,true);let offset=44;for(let i=0;i<buffer.length;i++)for(let c=0;c<channels;c++){const s=Math.max(-1,Math.min(1,buffer.getChannelData(c)[i]));view.setInt16(offset,s<0?s*0x8000:s*0x7fff,true);offset+=2;}return new Blob([view],{type:'audio/wav'}); }
 async function downloadWav() { const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext; if(!Offline) return; const secs=songSeconds(); const offline=new OfflineAudioContext(2, Math.ceil(44100*secs), 44100); const master=makeMaster(offline); scheduleArrangement(offline,master,secs); const blob=bufferToWav(await offline.startRendering()); const link=Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:`${state.songName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-croak-and-chord.wav`}); link.click(); URL.revokeObjectURL(link.href); }
 function readVlq(data, pos) { let value=0, byte; do { byte=data[pos.i++]; value=(value<<7)|(byte&127); } while(byte&128); return value; }
