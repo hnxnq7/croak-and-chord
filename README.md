@@ -55,4 +55,6 @@ web/                 dependency-free first interactive prototype
 npm start
 ```
 
-Open `http://localhost:4173`. It includes a cozy demo, MIDI import, four arrangement flavors, live browser playback, and WAV download. The synthesizer uses original simple oscillator voices while the licensed/original instrument palette is still to come.
+Open `http://localhost:4173`. It includes a cozy demo, MIDI import, four arrangement flavors, live browser playback, and WAV download.
+
+The in-browser synthesizer is fully original — no game samples. It builds a small warm "room" (a generated convolution reverb) and plays a handful of synthesized instruments: an inharmonic **bell** lead, a woody **kalimba/marimba** chord comp, a softened **leafy guitar** swell, a round **upright bass**, and filtered-noise **shaker/hand percussion**, plus the opt-in **croak-chat** vocal voice. Harmony is generated, not copied: the arranger estimates the song's key from the imported notes and voices a diatonic chord loop (I–V–vi–IV) underneath the melody, so the accompaniment follows whatever MIDI you bring.
