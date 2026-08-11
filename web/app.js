@@ -43,7 +43,7 @@ function setup() {
   loadCovers(); markCardCovers();
   makeWave(); renderTracks();
   document.querySelectorAll('.flavor').forEach(button => button.addEventListener('click', () => setFlavor(button.dataset.flavor)));
-  document.querySelectorAll('.song-demo').forEach(button => button.addEventListener('click', () => loadSuitcase(button.dataset.demo)));
+  document.querySelectorAll('.song-demo').forEach(button => button.addEventListener('click', () => { if (state.activeCard === button.dataset.demo) deselectCard(); else loadSuitcase(button.dataset.demo); }));
   document.querySelector('#midi-input').addEventListener('change', importMidi);
   document.querySelector('#demo-button').addEventListener('click', () => { state.activeCard = null; state.notes = defaultNotes; state.songName = 'Little Day Out'; document.querySelector('#song-status').textContent = 'Cozy demo planted — a cheerful 16-bar melody is ready to arrange.'; refreshSong(); });
   document.querySelector('#energy').addEventListener('input', event => { state.energy = +event.target.value; document.querySelector('#energy-output').textContent = ['gentle', 'just right', 'full of beans'][state.energy - 1]; renderTracks(); });
@@ -54,6 +54,15 @@ function setup() {
   document.querySelector('#play-button').addEventListener('click', togglePlay);
   document.querySelector('#download-button').addEventListener('click', downloadWav);
   document.querySelector('.share-button').addEventListener('click', () => { navigator.clipboard?.writeText(location.href); const button = document.querySelector('.share-button'); button.textContent = '✓ Link copied'; setTimeout(() => button.textContent = '↗ Share', 1500); });
+}
+function deselectCard() {
+  state.activeCard = null;
+  document.querySelectorAll('.song-demo').forEach(b => b.classList.remove('active'));
+  state.notes = defaultNotes; state.songName = 'Little Day Out';
+  document.querySelector('#demo-note').textContent = 'These set up an original arrangement recipe. Add a MIDI you’re allowed to use to make it your cover.';
+  document.querySelector('#song-status').textContent = 'Cleared the suitcase — back to the cozy demo melody.';
+  document.querySelector('#listen-title').textContent = 'Little Day Out';
+  makeWave(); renderTracks();
 }
 function loadSuitcase(name) {
   const suitcase = songSuitcases[name];
@@ -105,32 +114,33 @@ function guitar(ctx, dry, send, note, t, dur, gain) { const o = ctx.createOscill
 function bass(ctx, dry, send, note, t, dur, gain) { const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = midiToHz(note); const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(gain, t + .02); a.gain.exponentialRampToValueAtTime(.0001, t + Math.max(dur, .3)); o.connect(a); sendTo(ctx, a, dry, send, .12); o.start(t); o.stop(t + dur + .1); }
 // Brush shaker & hand tap — filtered noise, dry
 function shaker(ctx, dry, t, gain) { const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 7200; bp.Q.value = 1.2; const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(gain, t + .005); a.gain.exponentialRampToValueAtTime(.0001, t + .09); src.connect(bp).connect(a).connect(dry); src.start(t); src.stop(t + .12); }
-function tap(ctx, dry, t, gain) { const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2000; bp.Q.value = .8; const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(gain, t + .004); a.gain.exponentialRampToValueAtTime(.0001, t + .06); src.connect(bp).connect(a).connect(dry); src.start(t); src.stop(t + .09); }
-// Harmony helpers — detect a rough key, then voice diatonic triads that sit under the melody
-const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+// Rough key estimate — the most-weighted pitch class — used only to seed the babble.
 function detectKey(notes) { const w = new Array(12).fill(0); notes.forEach(n => w[((n.pitch % 12) + 12) % 12] += (n.duration || 1)); let best = 0; for (let i = 1; i < 12; i++) if (w[i] > w[best]) best = i; return best; }
-function triadPitchClasses(keyRoot, degree) { return [0, 2, 4].map(s => (keyRoot + MAJOR[(degree + s) % 7]) % 12); }
-function voiceChord(keyRoot, degree, base) { return triadPitchClasses(keyRoot, degree).map(pc => base + (((pc - base) % 12) + 12) % 12); }
-// Croak-chat / animalese: a buzzy source shaped by two vowel formants (F1/F2), with a
-// short pitch glide so each syllable "talks". Sits on top of the mix, not buried under it.
-const VOWEL_FORMANTS = { a: [800, 1150], e: [500, 1900], i: [300, 2300], o: [500, 900], u: [330, 800] };
+// Croak-chat / animalese: a saw glottal source shaped by three vowel formants (a real vowel),
+// with fade-in vibrato so it "sings" and a short consonant tick at the syllable onset so it "talks".
+const VOWEL_FORMANTS = { a: [800, 1150, 2800], e: [500, 1900, 2550], i: [300, 2300, 3000], o: [500, 900, 2600], u: [330, 800, 2400] };
 function croakChat(ctx, dry, send, note, start, duration, syllable, detune = 0) {
-  const v = syllable.toLowerCase().match(/[aeiou]/)?.[0] || 'a';
-  const [f1, f2] = VOWEL_FORMANTS[v] || VOWEL_FORMANTS.a;
-  const dur = Math.max(.12, Math.min(duration, .3)), base = midiToHz(note) * Math.pow(2, detune / 1200);
+  const s = syllable.toLowerCase();
+  const F = VOWEL_FORMANTS[s.match(/[aeiou]/)?.[0]] || VOWEL_FORMANTS.a;
+  const dur = Math.max(.13, Math.min(duration, .32)), base = midiToHz(note) * Math.pow(2, detune / 1200);
+  const level = ctx.createGain(); level.gain.value = .3; sendTo(ctx, level, dry, send, .28);
+  // Voiced source: saw at pitch, with a tiny onset blip and vibrato that fades in like a held sung note.
   const osc = ctx.createOscillator(); osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(base * .985, start);            // tiny cute blip, not a big scoop
-  osc.frequency.linearRampToValueAtTime(base, start + Math.min(.035, dur * .18));
-  const buzz = ctx.createOscillator(); buzz.type = 'square'; buzz.frequency.value = base * 2; // nasal edge
+  osc.frequency.setValueAtTime(base * .97, start);
+  osc.frequency.linearRampToValueAtTime(base, start + Math.min(.03, dur * .2));
+  const vib = ctx.createOscillator(); vib.type = 'sine'; vib.frequency.value = 5.5;
+  const vibGain = ctx.createGain(); vibGain.gain.setValueAtTime(0, start); vibGain.gain.linearRampToValueAtTime(base * .013, start + dur * .4);
+  vib.connect(vibGain).connect(osc.frequency);
   const amp = ctx.createGain();
   amp.gain.setValueAtTime(.0001, start);
-  amp.gain.exponentialRampToValueAtTime(1, start + .015);
-  amp.gain.setValueAtTime(1, start + dur * .7);
+  amp.gain.exponentialRampToValueAtTime(1, start + .02);
+  amp.gain.setValueAtTime(1, start + dur * .68);
   amp.gain.exponentialRampToValueAtTime(.0001, start + dur);
-  [[f1, 1, 7], [f2, .55, 10]].forEach(([freq, g, q]) => { const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q; const fg = ctx.createGain(); fg.gain.value = g; osc.connect(bp).connect(fg).connect(amp); });
-  const bg = ctx.createGain(); bg.gain.value = .11; buzz.connect(bg).connect(amp); // bright villager top
-  const level = ctx.createGain(); level.gain.value = .3; amp.connect(level); sendTo(ctx, level, dry, send, .28);
-  osc.start(start); osc.stop(start + dur + .03); buzz.start(start); buzz.stop(start + dur + .03);
+  F.forEach((freq, k) => { const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = [8, 11, 12][k]; const fg = ctx.createGain(); fg.gain.value = [1, .5, .28][k]; osc.connect(bp).connect(fg).connect(amp); });
+  amp.connect(level);
+  // Consonant onset: a brief noise tick (bright for s/t/k, softer otherwise) so syllables articulate.
+  if (s[0] && !'aeiou'.includes(s[0])) { const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 'stkcsh'.includes(s[0]) ? 4800 : 1500; bp.Q.value = 1; const ng = ctx.createGain(); ng.gain.setValueAtTime(.4, start); ng.gain.exponentialRampToValueAtTime(.0001, start + .04); src.connect(bp).connect(ng).connect(level); src.start(start); src.stop(start + .05); }
+  osc.start(start); osc.stop(start + dur + .04); vib.start(start); vib.stop(start + dur + .04);
 }
 const LEADS = { bell, marimba, musicbox: musicBox };
 const COMPS = { kalimba: pluckComp, marimba, guitar };
@@ -139,6 +149,28 @@ function songSeconds() { const beat = 60 / state.tempo; const end = state.notes.
 function updateTimeline() { const secs = songSeconds(), labels = document.querySelectorAll('.timeline-labels span'); if (labels.length === 4) [0, secs / 3, secs * 2 / 3, secs].forEach((t, i) => labels[i].textContent = fmtTime(t)); }
 // Fake-language babble: language-ish CV(C) syllables, seeded so playback and export match.
 function makeBabble(n, seed) { const onsets = ['b','d','g','k','t','p','m','n','r','s','h','w','y','ch','sh','j','f','l','','']; const vowels = ['a','e','i','o','u','ai','ou','ee','oo','ya']; const codas = ['','','','','','n','m','k','t']; let x = seed >>> 0; const rnd = () => (x = (x * 1664525 + 1013904223) >>> 0) / 4294967296; const pick = a => a[Math.floor(rnd() * a.length)]; const out = []; for (let i = 0; i < Math.max(1, n); i++) out.push((pick(onsets) + pick(vowels) + pick(codas)) || 'la'); return out; }
+// Find the major scale that best contains the melody, then use only that key's diatonic triads —
+// so the comp can never introduce an out-of-key note that clashes with the tune.
+const MAJ_SCALE = [0, 2, 4, 5, 7, 9, 11];
+function pcHistogram(notes) { const w = new Array(12).fill(0); notes.forEach(n => w[((n.pitch % 12) + 12) % 12] += (n.duration || .5)); return w; }
+function detectScale(notes) { const w = pcHistogram(notes); let best = 0, bestScore = -1; for (let t = 0; t < 12; t++) { const sc = MAJ_SCALE.reduce((a, d) => a + w[(t + d) % 12], 0); if (sc > bestScore) { bestScore = sc; best = t; } } return best; }
+function diatonicTriads(tonic) { const sc = MAJ_SCALE.map(d => (tonic + d) % 12); return sc.map((_, i) => [sc[i], sc[(i + 2) % 7], sc[(i + 4) % 7]]); }
+function chordForBar(notes, lo, hi, prev, triads) {
+  const w = new Array(12).fill(0);
+  notes.forEach(n => { if (n.start + (n.duration || .5) > lo && n.start < hi) w[((n.pitch % 12) + 12) % 12] += (n.duration || .5); });
+  if (!w.some(x => x > 0)) return prev || { root: triads[0][0], tones: triads[0] };
+  let best = null;
+  for (const tones of triads) {
+    let score = tones.reduce((a, pc) => a + w[pc], 0) + w[tones[0]] * .2; // coverage, small nod to the root
+    if (prev && prev.root === tones[0]) score += .2; // gentle continuity between bars
+    if (!best || score > best.score) best = { score, root: tones[0], tones };
+  }
+  return best;
+}
+function voiceTones(tones, base) { return tones.map(pc => base + (((pc - base) % 12) + 12) % 12); }
+// Soft cozy kick and a light rim tap for the groove.
+function kick(ctx, dry, t, gain) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(46, t + .11); const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(gain, t + .006); a.gain.exponentialRampToValueAtTime(.0001, t + .18); o.connect(a).connect(dry); o.start(t); o.stop(t + .2); }
+function rim(ctx, dry, t, gain) { const src = ctx.createBufferSource(); src.buffer = noiseBuffer(ctx); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = 1.4; const a = ctx.createGain(); a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(gain, t + .003); a.gain.exponentialRampToValueAtTime(.0001, t + .07); src.connect(bp).connect(a).connect(dry); src.start(t); src.stop(t + .09); }
 function scheduleArrangement(ctx, master, seconds = songSeconds()) {
   const pal = presets[state.flavor] || {};
   const { dry, send } = buildEngine(ctx, master, pal);
@@ -146,41 +178,41 @@ function scheduleArrangement(ctx, master, seconds = songSeconds()) {
   const beat = 60 / state.tempo, bar = beat * 4;
   const swingAmt = [0, .06, .12][state.swing] || 0;
   const keyRoot = detectKey(state.notes);
-  const prog = [0, 4, 5, 3]; // I – V – vi – IV, a cozy diatonic loop
   const melodyNotes = state.notes.filter(n => n.start * beat < seconds);
   const cue = state.vocalText.match(/[a-zA-Z]+/g);
   const vseed = (melodyNotes.length * 131 + keyRoot * 17 + Math.round(state.tempo)) >>> 0;
   const syllables = cue && cue.length ? cue : makeBabble(melodyNotes.length, vseed);
   const vjit = seededRand(vseed ^ 0x9e3779b9); // slight, occasional pitch drift — a little off, on purpose
 
-  // Lead line: the flavor's chosen voice, with a soft woodwind answer on higher energy
+  // Lead line (on the grid, no swing): the flavor's voice, with a soft answer on higher energy
   melodyNotes.forEach((n, i) => {
-    const t = n.start * beat + (i % 2 ? swingAmt * beat * .5 : 0);
+    const t = n.start * beat;
     const dur = Math.min((n.duration || .4) * beat, .9);
     lead(ctx, dry, send, n.pitch, t, dur, .12);
     if (state.vocalEnabled) { const detune = vjit() < .28 ? (vjit() * 2 - 1) * 32 : (vjit() * 2 - 1) * 7; croakChat(ctx, dry, send, n.pitch, t, Math.min(dur, .28), syllables[i % syllables.length], detune); }
     if (state.energy > 1 && i % 4 === 2) softLead(ctx, dry, send, n.pitch + 3, t + beat * .5, .3, .05);
   });
 
-  // Rhythm section: chord comp, guitar swell, walking bass, and hand percussion, bar by bar
+  // Rhythm section: per-bar chord that fits the melody, gentle arpeggio comp, bass, and a cozy groove
   const bars = Math.ceil(seconds / bar);
+  const triads = diatonicTriads(detectScale(state.notes));
+  let prevChord = null;
   for (let b = 0; b < bars; b++) {
-    const degree = prog[b % prog.length];
-    const chord = voiceChord(keyRoot, degree, 52);
-    const rootPc = (keyRoot + MAJOR[degree % 7]) % 12;
-    const bassNote = 36 + (((rootPc - 36) % 12) + 12) % 12;
-    const steps = state.energy > 2 ? 8 : state.energy > 1 ? 4 : 2;
-    for (let s = 0; s < steps; s++) {
-      const t = b * bar + s * (bar / steps) + (s % 2 ? swingAmt * beat * .5 : 0);
-      if (t >= seconds) break;
-      comp(ctx, dry, send, chord[s % chord.length] + (s >= chord.length && steps > 3 ? 12 : 0), t, bar / steps * .9, .05);
+    const ch = chordForBar(melodyNotes, b * 4, b * 4 + 4, prevChord, triads); prevChord = ch;
+    const chord = voiceTones(ch.tones, 52);
+    const bassNote = 36 + (((ch.root - 36) % 12) + 12) % 12;
+    const steps = state.energy > 1 ? 2 : 1; // subdivisions per beat
+    for (let bi = 0; bi < 4; bi++) for (let s = 0; s < steps; s++) {
+      const t = b * bar + bi * beat + s * (beat / steps) + (s ? swingAmt * beat * .5 : 0);
+      if (t < seconds) comp(ctx, dry, send, chord[(bi * steps + s) % chord.length], t, beat / steps * .9, .045);
     }
-    if (pal.pad) chord.forEach(p => softLead(ctx, dry, send, p - 12, b * bar, bar * .95, .02));
-    if (state.energy > 1 && pal.comp !== 'guitar') chord.forEach(p => guitar(ctx, dry, send, p, b * bar + .01, beat * 1.4, .026));
-    bass(ctx, dry, send, bassNote, b * bar, beat * .9, .11);
-    if (b * bar + 2 * beat < seconds) bass(ctx, dry, send, bassNote + (state.energy > 2 ? 7 : 0), b * bar + 2 * beat, beat * .9, .09);
-    if (state.energy > 1) for (let e = 0; e < 4; e++) { const t = b * bar + e * beat + beat * .5 + swingAmt * beat * .5; if (t < seconds) shaker(ctx, dry, t, .035); }
-    if (state.energy > 2) for (let e = 0; e < 4; e++) { const t = b * bar + e * beat; if (t < seconds) tap(ctx, dry, t, .03); }
+    if (pal.pad) chord.forEach(p => softLead(ctx, dry, send, p - 12, b * bar, bar * .95, .022));
+    bass(ctx, dry, send, bassNote, b * bar, beat * .9, .12);
+    if (b * bar + 2 * beat < seconds) bass(ctx, dry, send, bassNote + (state.energy > 2 ? 7 : 0), b * bar + 2 * beat, beat * .9, .1);
+    kick(ctx, dry, b * bar, .4);
+    if (state.energy > 1 && b * bar + 2 * beat < seconds) kick(ctx, dry, b * bar + 2 * beat, .32);
+    if (state.energy > 1) for (let e = 0; e < 4; e++) { const t = b * bar + e * beat + beat * .5 + swingAmt * beat * .5; if (t < seconds) shaker(ctx, dry, t, .026); }
+    if (state.energy > 2) for (const e of [1, 3]) { const t = b * bar + e * beat; if (t < seconds) rim(ctx, dry, t, .05); }
   }
 }
 function togglePlay() { if (state.playing) return stopPlay(); const secs = songSeconds(); state.context = new AudioContext(); const master = makeMaster(state.context); scheduleArrangement(state.context, master, secs); state.playing=true; document.querySelector('#play-button span').textContent='■'; document.querySelector('.playhead').getAnimations().forEach(a => a.cancel()); document.querySelector('.playhead').animate([{left:'0%'},{left:'100%'}],{duration:secs*1000,iterations:1}); state.timers.push(setTimeout(stopPlay, secs*1000+400)); }
