@@ -199,22 +199,23 @@ function scheduleArrangement(ctx, master, seconds = songSeconds()) {
   const bars = Math.ceil(seconds / bar);
   const tonic = detectScale(state.notes), triads = diatonicTriads(tonic);
   const scale = MAJ_SCALE.map(d => (tonic + d) % 12);
+  // Cozy K.K. color: add a diatonic 6th to major chords, a diatonic 7th to minor ones (both in-key).
+  const voiceColored = ch => { const colorPc = (ch.root + (ch.tones.includes((ch.root + 4) % 12) ? 9 : 10)) % 12; return voiceTones(scale.includes(colorPc) ? [...ch.tones, colorPc] : ch.tones, 52); };
+  const steps = state.energy > 1 ? 2 : 1; // comp subdivisions per beat
   let prevChord = null;
   for (let b = 0; b < bars; b++) {
-    const ch = chordForBar(melodyNotes, b * 4, b * 4 + 4, prevChord, triads); prevChord = ch;
-    // Cozy K.K. color: add a diatonic 6th to major chords, a diatonic 7th to minor ones (both in-key, no crunch).
-    const isMajor = ch.tones.includes((ch.root + 4) % 12);
-    const colorPc = (ch.root + (isMajor ? 9 : 10)) % 12;
-    const chord = voiceTones(scale.includes(colorPc) ? [...ch.tones, colorPc] : ch.tones, 52);
-    const bassNote = 36 + (((ch.root - 36) % 12) + 12) % 12;
-    const steps = state.energy > 1 ? 2 : 1; // subdivisions per beat
-    for (let bi = 0; bi < 4; bi++) for (let s = 0; s < steps; s++) {
-      const t = b * bar + bi * beat + s * (beat / steps) + (s ? swingAmt * beat * .5 : 0);
-      if (t < seconds) comp(ctx, dry, send, chord[(bi * steps + s) % chord.length], t, beat / steps * .9, .045);
+    // Two chords per bar (half-bar harmonic rhythm) so the accompaniment moves instead of sitting still.
+    for (let h = 0; h < 2; h++) {
+      const lo = b * 4 + h * 2;
+      const ch = chordForBar(melodyNotes, lo, lo + 2, prevChord, triads); prevChord = ch;
+      const chord = voiceColored(ch), bassNote = 36 + (((ch.root - 36) % 12) + 12) % 12, half = b * bar + h * 2 * beat;
+      for (let bi = 0; bi < 2; bi++) for (let s = 0; s < steps; s++) {
+        const t = half + bi * beat + s * (beat / steps) + (s ? swingAmt * beat * .5 : 0);
+        if (t < seconds) comp(ctx, dry, send, chord[(bi * steps + s) % chord.length], t, beat / steps * .9, .045);
+      }
+      if (pal.pad) chord.forEach(p => softLead(ctx, dry, send, p - 12, half, bar * .48, .022));
+      if (half < seconds) bass(ctx, dry, send, bassNote + (h && state.energy > 2 ? 7 : 0), half, beat * .9, h ? .1 : .12);
     }
-    if (pal.pad) chord.forEach(p => softLead(ctx, dry, send, p - 12, b * bar, bar * .95, .022));
-    bass(ctx, dry, send, bassNote, b * bar, beat * .9, .12);
-    if (b * bar + 2 * beat < seconds) bass(ctx, dry, send, bassNote + (state.energy > 2 ? 7 : 0), b * bar + 2 * beat, beat * .9, .1);
     kick(ctx, dry, b * bar, .4);
     if (state.energy > 1 && b * bar + 2 * beat < seconds) kick(ctx, dry, b * bar + 2 * beat, .32);
     if (state.energy > 1) for (let e = 0; e < 4; e++) { const t = b * bar + e * beat + beat * .5 + swingAmt * beat * .5; if (t < seconds) shaker(ctx, dry, t, .026); }
@@ -259,25 +260,41 @@ function skyline(notes) {
   for (let i = 0; i < arr.length - 1; i++) arr[i].duration = Math.max(.12, Math.min(arr[i].duration, arr[i + 1].start - arr[i].start));
   return arr;
 }
+function setImportProgress(frac) { const bar = document.querySelector('#import-progress'); if (!bar) return; if (frac == null) { bar.hidden = true; bar.firstElementChild.style.width = '0%'; } else { bar.hidden = false; bar.firstElementChild.style.width = `${Math.round(Math.min(1, frac) * 100)}%`; } }
 function importMidi(event) {
   const file = event.target.files[0]; if (!file) return;
+  const status = document.querySelector('#song-status');
+  const cleanName = file.name.replace(/\.(mid|midi)$/i, '');
+  status.textContent = `Reading “${file.name}”…`; setImportProgress(.05);
   const reader = new FileReader();
+  reader.onprogress = e => { if (e.lengthComputable) setImportProgress(.05 + .55 * e.loaded / e.total); };
+  reader.onerror = () => { setImportProgress(null); status.textContent = 'Could not read that file — try another .mid or .midi.'; };
   reader.onload = () => {
-    try {
-      const all = parseMidi(reader.result);
-      const parsed = all.length ? skyline(all).slice(0, 600) : defaultNotes;
-      const cleanName = file.name.replace(/\.(mid|midi)$/i, '');
-      state.notes = parsed; state.songName = cleanName; event.target.value = '';
-      if (state.activeCard) {
-        const pretty = state.activeCard.replaceAll('-', ' ');
-        state.covers[state.activeCard] = { songName: cleanName, notes: parsed }; saveCovers(); markCardCovers();
-        document.querySelector('#song-status').textContent = `Saved “${file.name}” as your ${pretty} cover ✓ — kept in this browser only. Press play to hear it in ${(presets[state.flavor] || {}).title || 'this flavor'}.`;
-        refreshSong(); document.querySelector('#listen-title').textContent = `${pretty} · your cover`;
-      } else {
-        document.querySelector('#song-status').textContent = `${parsed.length} little notes planted from “${file.name}”. Have a listen, then change the weather.`;
-        refreshSong();
-      }
-    } catch (err) { document.querySelector('#song-status').textContent = 'That file did not look like a MIDI garden path — try a .mid or .midi file.'; }
+    setImportProgress(.65); status.textContent = `Arranging “${file.name}”…`;
+    setTimeout(() => { // let the progress bar paint before the (blocking) parse
+      try {
+        const all = parseMidi(reader.result);
+        event.target.value = ''; setImportProgress(1);
+        if (!all.length) {
+          state.notes = defaultNotes; state.songName = 'Little Day Out';
+          status.textContent = `Hmm — couldn't find playable notes in “${file.name}”. Kept the cozy demo; try another MIDI?`;
+          refreshSong();
+        } else {
+          const parsed = skyline(all).slice(0, 600);
+          state.notes = parsed; state.songName = cleanName;
+          if (state.activeCard) {
+            const pretty = state.activeCard.replaceAll('-', ' ');
+            state.covers[state.activeCard] = { songName: cleanName, notes: parsed }; saveCovers(); markCardCovers();
+            status.textContent = `Saved “${file.name}” as your ${pretty} cover ✓ — kept in this browser only. Press play to hear it in ${(presets[state.flavor] || {}).title || 'this flavor'}.`;
+            refreshSong(); document.querySelector('#listen-title').textContent = `${pretty} · your cover`;
+          } else {
+            status.textContent = `${parsed.length} little notes planted from “${file.name}”. Have a listen, then change the weather.`;
+            refreshSong();
+          }
+        }
+        setTimeout(() => setImportProgress(null), 400);
+      } catch (err) { setImportProgress(null); status.textContent = 'That file did not look like a MIDI garden path — try a .mid or .midi file.'; }
+    }, 30);
   };
   reader.readAsArrayBuffer(file);
 }
