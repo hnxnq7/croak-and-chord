@@ -47,6 +47,7 @@
           </label>
           <button id="demo-button" class="text-button" type="button">use the cozy demo instead ↗</button>
         </div>
+        <label class="rights-ack"><input id="rights-ack" type="checkbox" /> <span>I have the right to use this file — I own it, made it, or it’s licensed to me. Imported MIDIs stay in this browser only and are never uploaded.</span></label>
         <p id="song-status" class="song-status">No song selected yet — the demo melody is ready when you are.</p>
 
         <div class="step-label flavor-label"><span>2</span> PICK THE WEATHER</div>
@@ -74,8 +75,8 @@
             <label class="control">Tempo <output id="tempo-output">108 bpm</output><input id="tempo" type="range" min="70" max="150" value="108" /></label>
             <label class="control">Swing <output id="swing-output">a little</output><input id="swing" type="range" min="0" max="2" value="1" /></label>
             <div class="vocal-maker">
-              <div class="vocal-title"><span>✧</span><p><strong>Croak-chat vocals</strong><small>an original, animal-like melody voice</small></p><label class="toggle"><input id="vocal-toggle" type="checkbox" /><span></span></label></div>
-              <label class="lyric-field" for="vocal-text">Syllables or a lyric cue<input id="vocal-text" maxlength="120" placeholder="la la, tiny boat, hello…" disabled /></label>
+              <div class="vocal-title"><span>✧</span><p><strong>Croak-chat vocals</strong><small>an original, animal-like babble voice</small></p><label class="toggle"><input id="vocal-toggle" type="checkbox" checked /><span></span></label></div>
+              <label class="lyric-field" for="vocal-text">Syllable cue <em>(blank = made-up island babble)</em><input id="vocal-text" maxlength="120" placeholder="leave empty for random animal babble…" /></label>
             </div>
           </aside>
         </div>
