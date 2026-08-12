@@ -250,9 +250,13 @@ function readVlq(data, pos) { let value=0, byte; do { byte=data[pos.i++]; value=
 // Each track keeps its OWN clock, and channel messages read the right number of data bytes.
 function parseMidi(buffer) {
   const data = new Uint8Array(buffer), view = new DataView(buffer);
-  if (String.fromCharCode(...data.slice(0, 4)) !== 'MThd') throw Error('not MIDI');
-  const division = view.getUint16(12) || 480;
-  const pos = { i: 14 }, notes = [];
+  let h = 0; // locate MThd rather than assuming byte 0 — tolerates RIFF/RMID wrappers and leading junk
+  if (!(data[0] === 0x4d && data[1] === 0x54 && data[2] === 0x68 && data[3] === 0x64)) {
+    h = -1; for (let i = 0; i + 4 <= data.length; i++) if (data[i] === 0x4d && data[i + 1] === 0x54 && data[i + 2] === 0x68 && data[i + 3] === 0x64) { h = i; break; }
+    if (h < 0) throw Error('not MIDI');
+  }
+  const division = view.getUint16(h + 12) || 480;
+  const pos = { i: h + 14 }, notes = [];
   while (pos.i < data.length) {
     if (String.fromCharCode(...data.slice(pos.i, pos.i + 4)) !== 'MTrk') { pos.i++; continue; }
     pos.i += 8;
@@ -261,8 +265,8 @@ function parseMidi(buffer) {
       ticks += readVlq(data, pos);
       let status = data[pos.i];
       if (status & 128) { pos.i++; running = status; } else status = running;
-      if (status === 0xff) { const kind = data[pos.i++]; pos.i += readVlq(data, pos); if (kind === 47) break; continue; }
-      if (status === 0xf0 || status === 0xf7) { pos.i += readVlq(data, pos); continue; } // skip sysex
+      if (status === 0xff) { const kind = data[pos.i++]; const len = readVlq(data, pos); pos.i += len; if (kind === 47) break; continue; } // read len FIRST — `pos.i += readVlq(...)` desyncs (reads pos.i before readVlq advances it)
+      if (status === 0xf0 || status === 0xf7) { const len = readVlq(data, pos); pos.i += len; continue; } // skip sysex
       const hi = status & 0xf0, a = data[pos.i++], b = (hi === 0xc0 || hi === 0xd0) ? 0 : data[pos.i++]; // C0/D0 carry one data byte
       const key = `${status & 15}-${a}`;
       if (hi === 0x90 && b) active.set(key, { pitch: a, tick: ticks });
