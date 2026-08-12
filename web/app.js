@@ -147,7 +147,8 @@ function croakChat(ctx, dry, send, note, start, duration, syllable, detune = 0) 
 const LEADS = { bell, marimba, musicbox: musicBox };
 const COMPS = { kalimba: pluckComp, marimba, guitar };
 function fmtTime(sec) { return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`; }
-function songSeconds() { const beat = 60 / state.tempo; const end = state.notes.reduce((m, n) => Math.max(m, n.start + (n.duration || .5)), 0); return Math.max(4, Math.min(end * beat + 1.5, 300)); }
+// Cap the arrangement so realtime + offline stay responsive (a full 4-min song = thousands of nodes).
+function songSeconds() { const beat = 60 / state.tempo; const end = state.notes.reduce((m, n) => Math.max(m, n.start + (n.duration || .5)), 0); return Math.max(4, Math.min(end * beat + 1.5, 30)); }
 function updateTimeline() { const secs = songSeconds(), labels = document.querySelectorAll('.timeline-labels span'); if (labels.length === 4) [0, secs / 3, secs * 2 / 3, secs].forEach((t, i) => labels[i].textContent = fmtTime(t)); }
 // Fake-language babble: language-ish CV(C) syllables, seeded so playback and export match.
 function makeBabble(n, seed) { const onsets = ['b','d','g','k','t','p','m','n','r','s','h','w','y','ch','sh','j','f','l','','']; const vowels = ['a','e','i','o','u','ai','ou','ee','oo','ya']; const codas = ['','','','','','n','m','k','t']; let x = seed >>> 0; const rnd = () => (x = (x * 1664525 + 1013904223) >>> 0) / 4294967296; const pick = a => a[Math.floor(rnd() * a.length)]; const out = []; for (let i = 0; i < Math.max(1, n); i++) out.push((pick(onsets) + pick(vowels) + pick(codas)) || 'la'); return out; }
@@ -223,14 +224,14 @@ function scheduleArrangement(ctx, master, seconds = songSeconds(), t0 = 0) {
   }
 }
 // Reuse ONE AudioContext (browsers cap you at ~6, and fresh ones can start suspended → silent play).
+function setDebug(msg) { const d = document.querySelector('#debug'); if (d) d.textContent = msg || ''; }
 function togglePlay() {
   if (state.playing) return stopPlay();
-  if (!state.context) state.context = new (window.AudioContext || window.webkitAudioContext)();
-  const ctx = state.context;
-  const start = () => {
-    if (!state.pending) return;        // a stop cancelled us while resuming
-    state.pending = false;
-    const secs = songSeconds(), t0 = ctx.currentTime + .08;   // compute t0 AFTER the clock is actually running
+  try {
+    if (!state.context) state.context = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = state.context;
+    if (ctx.resume) ctx.resume(); // fire-and-forget; scheduling below doesn't depend on the promise resolving
+    const secs = songSeconds(), t0 = ctx.currentTime + .12;
     state.master = makeMaster(ctx);
     scheduleArrangement(ctx, state.master, secs, t0);
     state.playing = true;
@@ -238,11 +239,11 @@ function togglePlay() {
     const ph = document.querySelector('.playhead'); ph.getAnimations().forEach(a => a.cancel());
     ph.animate([{ left: '0%' }, { left: '100%' }], { duration: secs * 1000, iterations: 1 });
     state.timers.push(setTimeout(stopPlay, secs * 1000 + 400));
-  };
-  state.pending = true;
-  // Wait for resume to actually resolve before scheduling — a suspended context has a frozen clock.
-  if (ctx.state !== 'running') { const r = ctx.resume(); (r && r.then ? r : Promise.resolve()).then(start); }
-  else start();
+    // Live diagnostic: context state + real output level, so silence can be pinpointed on any machine.
+    const an = ctx.createAnalyser(); state.master.connect(an); const buf = new Float32Array(an.fftSize);
+    const tick = () => { if (!state.playing) return setDebug(''); an.getFloatTimeDomainData(buf); let pk = 0; for (let i = 0; i < buf.length; i++) pk = Math.max(pk, Math.abs(buf[i])); setDebug(`audio: ${ctx.state} · output level ${pk.toFixed(3)} · ${ctx.currentTime.toFixed(1)}s`); state.timers.push(setTimeout(tick, 250)); };
+    tick();
+  } catch (e) { setDebug('⚠️ play error: ' + e.message); state.playing = false; document.querySelector('#play-button span').textContent = '▶'; }
 }
 function stopPlay() {
   state.pending = false;
@@ -253,7 +254,28 @@ function stopPlay() {
   const ph = document.querySelector('.playhead'); if (ph) ph.getAnimations().forEach(a => a.cancel());
 }
 function bufferToWav(buffer) { const channels=buffer.numberOfChannels, length=buffer.length*channels*2+44, view=new DataView(new ArrayBuffer(length)); const write=(o,s)=>[...s].forEach((c,i)=>view.setUint8(o+i,c.charCodeAt(0))); write(0,'RIFF');view.setUint32(4,36+buffer.length*channels*2,true);write(8,'WAVEfmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,channels,true);view.setUint32(24,buffer.sampleRate,true);view.setUint32(28,buffer.sampleRate*channels*2,true);view.setUint16(32,channels*2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,buffer.length*channels*2,true);let offset=44;for(let i=0;i<buffer.length;i++)for(let c=0;c<channels;c++){const s=Math.max(-1,Math.min(1,buffer.getChannelData(c)[i]));view.setInt16(offset,s<0?s*0x8000:s*0x7fff,true);offset+=2;}return new Blob([view],{type:'audio/wav'}); }
-async function downloadWav() { const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext; if(!Offline) return; const secs=songSeconds(); const offline=new OfflineAudioContext(2, Math.ceil(44100*secs), 44100); const master=makeMaster(offline); scheduleArrangement(offline,master,secs); const blob=bufferToWav(await offline.startRendering()); const link=Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:`${state.songName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}-croak-and-chord.wav`}); link.click(); URL.revokeObjectURL(link.href); }
+async function downloadWav() {
+  const status = document.querySelector('#song-status');
+  try {
+    const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!Offline) throw Error('OfflineAudioContext unavailable in this browser');
+    const secs = songSeconds();
+    status.textContent = `Rendering your ${secs.toFixed(0)}s WAV…`; setImportProgress(.15);
+    await new Promise(r => setTimeout(r, 30)); // let the progress bar paint before the blocking render
+    const offline = new Offline(2, Math.ceil(44100 * secs), 44100);
+    const master = makeMaster(offline);
+    scheduleArrangement(offline, master, secs);
+    setImportProgress(.5);
+    const rendered = await offline.startRendering();
+    setImportProgress(.85);
+    const blob = bufferToWav(rendered);
+    const url = URL.createObjectURL(blob);
+    const link = Object.assign(document.createElement('a'), { href: url, download: `${state.songName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-croak-and-chord.wav` });
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000); // revoke later — revoking immediately can cancel the download
+    setImportProgress(1); status.textContent = 'WAV ready — check your downloads. 🎵';
+    setTimeout(() => setImportProgress(null), 600);
+  } catch (e) { setImportProgress(null); status.textContent = '⚠️ Download failed: ' + e.message; }
+}
 function readVlq(data, pos) { let value=0, byte; do { byte=data[pos.i++]; value=(value<<7)|(byte&127); } while(byte&128); return value; }
 // Parse a MIDI file into {pitch,start,duration} notes (start/duration in quarter-note beats).
 // Each track keeps its OWN clock, and channel messages read the right number of data bytes.
@@ -287,7 +309,7 @@ function parseMidi(buffer) {
 // Collapse polyphony to a clean top-line melody: highest note at each onset, trimmed to the next onset.
 function skyline(notes) {
   const byStart = new Map();
-  notes.forEach(n => { const k = Math.round(n.start * 4) / 4; const cur = byStart.get(k); if (!cur || n.pitch > cur.pitch) byStart.set(k, { pitch: n.pitch, start: k, duration: n.duration }); });
+  notes.forEach(n => { const k = Math.round(n.start); const cur = byStart.get(k); if (!cur || n.pitch > cur.pitch) byStart.set(k, { pitch: n.pitch, start: k, duration: n.duration }); }); // ~1 note/beat — a cozy cover sketch, and keeps the node count playable in real time
   const arr = [...byStart.values()].sort((a, b) => a.start - b.start);
   for (let i = 0; i < arr.length - 1; i++) arr[i].duration = Math.max(.12, Math.min(arr[i].duration, arr[i + 1].start - arr[i].start));
   return arr;
@@ -312,7 +334,7 @@ function importMidi(event) {
           status.textContent = `Hmm — couldn't find playable notes in “${file.name}”. Kept the cozy demo; try another MIDI?`;
           refreshSong();
         } else {
-          const parsed = skyline(all).slice(0, 600);
+          const parsed = skyline(all).slice(0, 160);
           state.notes = parsed; state.songName = cleanName;
           if (state.activeCard) {
             const pretty = state.activeCard.replaceAll('-', ' ');
