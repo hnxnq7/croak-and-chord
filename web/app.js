@@ -226,17 +226,26 @@ function scheduleArrangement(ctx, master, seconds = songSeconds(), t0 = 0) {
 function togglePlay() {
   if (state.playing) return stopPlay();
   if (!state.context) state.context = new (window.AudioContext || window.webkitAudioContext)();
-  const ctx = state.context; if (ctx.state === 'suspended') ctx.resume();
-  const secs = songSeconds(), t0 = ctx.currentTime + .06;
-  state.master = makeMaster(ctx);
-  scheduleArrangement(ctx, state.master, secs, t0);
-  state.playing = true;
-  document.querySelector('#play-button span').textContent = '■';
-  const ph = document.querySelector('.playhead'); ph.getAnimations().forEach(a => a.cancel());
-  ph.animate([{ left: '0%' }, { left: '100%' }], { duration: secs * 1000, iterations: 1 });
-  state.timers.push(setTimeout(stopPlay, secs * 1000 + 400));
+  const ctx = state.context;
+  const start = () => {
+    if (!state.pending) return;        // a stop cancelled us while resuming
+    state.pending = false;
+    const secs = songSeconds(), t0 = ctx.currentTime + .08;   // compute t0 AFTER the clock is actually running
+    state.master = makeMaster(ctx);
+    scheduleArrangement(ctx, state.master, secs, t0);
+    state.playing = true;
+    document.querySelector('#play-button span').textContent = '■';
+    const ph = document.querySelector('.playhead'); ph.getAnimations().forEach(a => a.cancel());
+    ph.animate([{ left: '0%' }, { left: '100%' }], { duration: secs * 1000, iterations: 1 });
+    state.timers.push(setTimeout(stopPlay, secs * 1000 + 400));
+  };
+  state.pending = true;
+  // Wait for resume to actually resolve before scheduling — a suspended context has a frozen clock.
+  if (ctx.state !== 'running') { const r = ctx.resume(); (r && r.then ? r : Promise.resolve()).then(start); }
+  else start();
 }
 function stopPlay() {
+  state.pending = false;
   state.timers.forEach(clearTimeout); state.timers = [];
   if (state.master) { try { state.master.disconnect(); } catch (e) {} state.master = null; } // cut sound; scheduled voices self-stop
   state.playing = false;
